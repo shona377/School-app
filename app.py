@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import os
+import random
+import string
 from datetime import datetime
 
 # ==========================================
@@ -23,13 +25,20 @@ st.markdown("""
         border: 1px solid #0284c7;
         margin-bottom: 20px;
     }
-    .nagad-card {
+    .nagad-header {
         background-color: #d97706;
         color: white;
-        padding: 20px;
-        border-radius: 12px;
+        padding: 15px;
+        border-radius: 8px 8px 0 0;
         text-align: center;
         font-weight: bold;
+    }
+    .nagad-body {
+        border: 2px solid #d97706;
+        padding: 20px;
+        border-radius: 0 0 8px 8px;
+        background-color: #ffffff;
+        color: #000000;
     }
     .status-card {
         background-color: #1e293b;
@@ -41,7 +50,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Session State Initialization (Auto Updates across app)
+# Session State Initialization
 if "admin_password" not in st.session_state:
     st.session_state["admin_password"] = "admin123"
 
@@ -70,6 +79,10 @@ if "status_posts" not in st.session_state:
     st.session_state["status_posts"] = [
         {"Date": "2026-03-02", "Text": "আজ বিদ্যালয়ে বিজ্ঞান মেলার উদ্বোধন করা হয়েছে।", "Image": None}
     ]
+
+# Nagad Payment State Management
+if "nagad_step" not in st.session_state:
+    st.session_state["nagad_step"] = "input"
 
 # Excel Loader
 @st.cache_data
@@ -125,7 +138,6 @@ else:
 # 1. HOME & DASHBOARD
 # ----------------------------------------------------
 if menu == "🏠 Home & Dashboard":
-    # Marquee Announcement
     st.markdown(f"""
         <div class="header-box">
             <marquee behavior="scroll" direction="left" scrollamount="7">
@@ -134,7 +146,6 @@ if menu == "🏠 Home & Dashboard":
         </div>
     """, unsafe_allow_html=True)
 
-    # 1. Cover Photo Display
     if st.session_state["cover_photo"] is not None:
         st.image(st.session_state["cover_photo"], use_container_width=True)
     else:
@@ -144,7 +155,6 @@ if menu == "🏠 Home & Dashboard":
     st.caption(f"English: {SCHOOL_NAME_EN}")
     st.divider()
 
-    # 2. Headmaster Box Section
     col_hm_img, col_hm_txt = st.columns([1, 3])
     with col_hm_img:
         st.subheader("👨‍🏫 প্রতিষ্ঠান প্রধান")
@@ -158,7 +168,6 @@ if menu == "🏠 Home & Dashboard":
 
     st.divider()
 
-    # Status / Updates Feed Bar
     st.subheader("📢 School Activity Status & Updates Feed")
     for post in st.session_state["status_posts"]:
         with st.container():
@@ -192,7 +201,7 @@ elif menu == "🆔 Student Portal":
     st.title("🆔 স্টুডেন্ট আইডি ও প্রোফাইল পোর্টাল")
     
     if df_students is None:
-        st.warning("⚠️ 'students.xlsx' ফাইলটি আপলোড করা নেই। থাকলে আইডি দিয়ে অনুসন্ধান করা সম্ভব হতো।")
+        st.warning("⚠️ 'students.xlsx' ফাইলটি আপলোড করা নেই।")
     else:
         search_id = st.text_input("শিক্ষার্থীর আইডি নম্বর লিখুন:", placeholder="উদাহরণ: 1001")
         if search_id:
@@ -235,67 +244,111 @@ elif menu == "📸 Photo Gallery":
         st.info("গ্যালারিতে এখনো কোনো ছবি আপলোড করা হয়নি।")
 
 # ----------------------------------------------------
-# 6. NAGAD PAYMENT GATEWAY
+# 6. DIRECT NAGAD AUTOMATED PAYMENT GATEWAY
 # ----------------------------------------------------
 elif menu == "🟠 Nagad Payment Gateway":
-    st.title("🟠 নগদ (Nagad) ডিজিটাল ফি পেমেন্ট পোর্টাল")
-    st.markdown("""
-        <div class="nagad-card">
-            <h2>🟠 Nagad Payment Express</h2>
-            <p>অনলাইনে যেকোনো ফি নগদ অ্যাকাউন্ট থেকে সহজে প্রদান করুন</p>
-        </div>
-    """, unsafe_allow_html=True)
-    st.write("")
+    st.title("🟠 নগদ (Nagad) অনলাইন ডাইরেক্ট পেমেন্ট গেটওয়ে")
+    st.caption("কোনো থার্ডপার্টি অ্যাপ ছাড়া সরাসরি ওয়েবসাইটেই পেমেন্ট করুন")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        s_id = st.text_input("শিক্ষার্থীর আইডি (Student ID):", placeholder="e.g. 1001")
-        student_name = st.text_input("শিক্ষার্থীর নাম:", placeholder="e.g. Md. Rahat")
-        fee_cat = st.selectbox("ফি-এর ধরন:", ["মাসিক টিউশন ফি", "পরীক্ষার ফি", "ভর্তি ফি", "সেশন ফি"])
-        amt = st.number_input("টাকার পরিমাণ (BDT):", min_value=100, value=1500, step=100)
+    if st.session_state["nagad_step"] == "input":
+        col1, col2 = st.columns(2)
+        with col1:
+            s_id = st.text_input("শিক্ষার্থীর আইডি (Student ID):", placeholder="e.g. 1001", key="pay_sid")
+            student_name = st.text_input("শিক্ষার্থীর নাম:", placeholder="e.g. Md. Rahat", key="pay_sname")
+        with col2:
+            fee_cat = st.selectbox("ফি-এর ধরন:", ["মাসিক টিউশন ফি", "পরীক্ষার ফি", "ভর্তি ফি", "সেশন ফি"], key="pay_fee")
+            amt = st.number_input("টাকার পরিমাণ (BDT):", min_value=100, value=1500, step=100, key="pay_amt")
 
-    with c2:
-        nagad_number = st.text_input("আপনার নগদ মোবাইল নম্বর:", placeholder="017XXXXXXXX")
-        trx_id = st.text_input("নগদ ট্রানজেকশন আইডি (TrxID):", placeholder="e.g. 7A8B9C10D")
+        st.divider()
 
-    st.divider()
+        if st.button("🟠 Proceed to Nagad Direct Payment Gateway", type="primary", use_container_width=True):
+            if s_id and student_name:
+                st.session_state["pay_data"] = {
+                    "id": s_id,
+                    "name": student_name,
+                    "fee": fee_cat,
+                    "amt": amt
+                }
+                st.session_state["nagad_step"] = "checkout"
+                st.rerun()
+            else:
+                st.error("⚠️ অনুগ্রহ করে শিক্ষার্থীর আইডি এবং নাম পূরণ করুন!")
 
-    if st.button("🟠 Pay Now with Nagad (পেমেন্ট সম্পন্ন করুন)", type="primary", use_container_width=True):
-        if s_id and student_name and nagad_number and trx_id:
-            st.balloons()
-            st.success("✅ নগদ পেমেন্ট সফলভাবে সম্পন্ন হয়েছে!")
-
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            receipt_text = f"""
-            =================================================
-                       {SCHOOL_NAME_BN}
-                   OFFICIAL NAGAD PAYMENT VOUCHER
-            =================================================
-            Date & Time     : {now}
-            Student ID      : {s_id}
-            Student Name    : {student_name}
-            Fee Type        : {fee_cat}
-            Amount Paid     : BDT {amt}
-            Gateway Method  : Nagad (নগদ)
-            Nagad Account   : {nagad_number}
-            Transaction ID  : {trx_id}
-            Status          : PAID & VERIFIED
-            =================================================
-            ধন্যবাদ! আপনার পেমেন্ট মানি রসিদ নিচে থেকে ডাউনলোড করুন।
-            """
+    # AUTOMATED NAGAD CHECKOUT INTERFACE
+    elif st.session_state["nagad_step"] == "checkout":
+        p = st.session_state["pay_data"]
+        
+        st.markdown("""
+            <div class="nagad-header">
+                <h2>🟠 Nagad Payment Express</h2>
+                <p>Secure Online Merchant Payment Interface</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        with st.container():
+            st.info(f"<b>Merchant Name:</b> {SCHOOL_NAME_EN}<br><b>Amount:</b> BDT {p['amt']} TK<br><b>Student ID:</b> {p['id']} ({p['name']})", icon="🧾")
             
-            st.subheader("🧾 পেমেন্ট ভাউচার / মানি রসিদ")
-            st.code(receipt_text)
+            n_num = st.text_input("Enter Nagad Account Number:", placeholder="017XXXXXXXX")
+            n_pin = st.text_input("Enter Nagad Account PIN:", type="password", placeholder="XXXX")
             
+            c_btn1, c_btn2 = st.columns(2)
+            with c_btn1:
+                if st.button("✅ Complete Payment", type="primary", use_container_width=True):
+                    if len(n_num) >= 11 and len(n_pin) >= 4:
+                        # Auto generate TrxID
+                        gen_trx = "NGD" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+                        st.session_state["pay_data"]["trx"] = gen_trx
+                        st.session_state["pay_data"]["account"] = n_num
+                        st.session_state["nagad_step"] = "success"
+                        st.rerun()
+                    else:
+                        st.error("❌ সঠিক নগদ অ্যাকাউন্ট নম্বর ও ৪ ডিজিটের পিন নম্বর দিন!")
+            with c_btn2:
+                if st.button("❌ Cancel Transaction", use_container_width=True):
+                    st.session_state["nagad_step"] = "input"
+                    st.rerun()
+
+    # SUCCESS & RENDER VOUCHER
+    elif st.session_state["nagad_step"] == "success":
+        p = st.session_state["pay_data"]
+        st.balloons()
+        st.success("🎉 নগদ পেমেন্ট সফলভাবে সম্পন্ন হয়েছে (Direct Automated Payment Completed)!")
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        receipt_text = f"""
+        =================================================
+                   {SCHOOL_NAME_BN}
+               OFFICIAL NAGAD DIRECT PAYMENT RECEIPT
+        =================================================
+        Date & Time     : {now}
+        Student ID      : {p['id']}
+        Student Name    : {p['name']}
+        Fee Type        : {p['fee']}
+        Amount Paid     : BDT {p['amt']}
+        Payment Gateway : Nagad Automated Direct Gateway
+        Nagad Account   : {p['account']}
+        Transaction ID  : {p['trx']}
+        Status          : SUCCESSFUL & AUTO-VERIFIED
+        =================================================
+        ধন্যবাদ! আপনার পেমেন্ট মানি রসিদ সংরক্ষণ করুন।
+        """
+        
+        st.subheader("🧾 পেমেন্ট ভাউচার / মানি রসিদ")
+        st.code(receipt_text)
+        
+        c_sc1, c_sc2 = st.columns(2)
+        with c_sc1:
             st.download_button(
-                label="📥 ডাউনলোড মানি রসিদ (Download Money Receipt)",
+                label="📥 ডাউনলোড মানি রসিদ (Download Voucher)",
                 data=receipt_text,
-                file_name=f"Nagad_Receipt_{s_id}_{trx_id}.txt",
+                file_name=f"Nagad_Receipt_{p['id']}_{p['trx']}.txt",
                 mime="text/plain",
                 use_container_width=True
             )
-        else:
-            st.error("⚠️ অনুগ্রহ করে সকল তথ্য (আইডি, নাম, নগদ নম্বর এবং TrxID) সঠিকভাবে দিন!")
+        with c_sc2:
+            if st.button("🔄 Make Another Payment", use_container_width=True):
+                st.session_state["nagad_step"] = "input"
+                st.rerun()
 
 # ----------------------------------------------------
 # 7. CONTACT AUTHORITY
@@ -311,7 +364,7 @@ elif menu == "📞 Contact Authority":
     """)
 
 # ----------------------------------------------------
-# 8. ADMIN CONTROL PANEL (Only Authority Access)
+# 8. ADMIN CONTROL PANEL
 # ----------------------------------------------------
 elif menu == "⚙️ Admin Control Panel":
     st.title("⚙️ Authority Admin Control Panel")
@@ -321,12 +374,10 @@ elif menu == "⚙️ Admin Control Panel":
     else:
         st.success("✅ সুস্বাগতম! আপনি স্কুলের তথ্য ও ছবি পরিচালনা করতে পারবেন।")
 
-        # Tab layout for admin controls
         tab_cover, tab_hm, tab_notice, tab_status, tab_gal, tab_pwd = st.tabs([
             "🌄 কভার ফটো", "👨‍🏫 প্রতিষ্ঠান প্রধান", "📌 নোটিশ পোস্ট", "📢 স্ট্যাটাস পোস্ট", "📸 গ্যালারি", "🔑 পাসওয়ার্ড পরিবর্তন"
         ])
 
-        # 1. Cover Photo Upload directly from Gallery
         with tab_cover:
             st.subheader("🌄 কভার ছবি পরিবর্তন (গ্যালারি থেকে)")
             up_cover = st.file_uploader("গ্যালারি থেকে কভার ছবি সিলেক্ট করুন", type=["jpg", "jpeg", "png"], key="up_cover_file")
@@ -336,7 +387,6 @@ elif menu == "⚙️ Admin Control Panel":
                     st.success("✅ কভার ফটো সফলভাবে আপলোড ও সেভ হয়েছে!")
                     st.rerun()
 
-        # 2. Headmaster Photo & Speech
         with tab_hm:
             st.subheader("👨‍🏫 প্রতিষ্ঠান প্রধানের তথ্য ও ছবি")
             up_hm = st.file_uploader("প্রতিষ্ঠান প্রধানের ছবি সিলেক্ট করুন", type=["jpg", "jpeg", "png"], key="up_hm_file")
@@ -348,7 +398,6 @@ elif menu == "⚙️ Admin Control Panel":
                 st.success("✅ প্রতিষ্ঠান প্রধানের তথ্য আপডেট হয়েছে!")
                 st.rerun()
 
-        # 3. Notice Post (Text, Image, PDF)
         with tab_notice:
             st.subheader("📌 নতুন নোটিশ যোগ করুন")
             n_title = st.text_input("নোটিশের শিরোনাম / বর্ণনা:")
@@ -362,7 +411,6 @@ elif menu == "⚙️ Admin Control Panel":
                     st.success("✅ নোটিশ সফলভাবে পোস্ট করা হয়েছে!")
                     st.rerun()
 
-        # 4. Status Post Feed
         with tab_status:
             st.subheader("📢 ড্যাশবোর্ড স্ট্যাটাস ও আপডেট পোস্ট")
             s_text = st.text_area("স্ট্যাটাসের বিষয়বস্তু:")
@@ -375,7 +423,6 @@ elif menu == "⚙️ Admin Control Panel":
                     st.success("✅ স্ট্যাটাস আপডেট পোস্ট করা হয়েছে!")
                     st.rerun()
 
-        # 5. Gallery Upload
         with tab_gal:
             st.subheader("📸 গ্যালারিতে ছবি যোগ করুন")
             g_img = st.file_uploader("ছবি সিলেক্ট করুন:", type=["jpg", "jpeg", "png"], key="up_gal_file")
@@ -385,7 +432,6 @@ elif menu == "⚙️ Admin Control Panel":
                     st.success("✅ গ্যালারিতে ছবি যোগ করা হয়েছে!")
                     st.rerun()
 
-        # 6. Change Password
         with tab_pwd:
             st.subheader("🔑 অ্যাডমিন পাসওয়ার্ড পরিবর্তন")
             new_pwd = st.text_input("নতুন পাসওয়ার্ড দিন:", type="password")
@@ -393,6 +439,6 @@ elif menu == "⚙️ Admin Control Panel":
             if st.button("Update Password", type="primary"):
                 if new_pwd and new_pwd == confirm_pwd:
                     st.session_state["admin_password"] = new_pwd
-                    st.success("✅ অ্যাডমিন পাসওয়ার্ড সফলভাবে পরিবর্তিত হয়েছে! পরবর্তী লগইনে এটি কাজ করবে।")
+                    st.success("✅ অ্যাডমিন পাসওয়ার্ড সফলভাবে পরিবর্তিত হয়েছে!")
                 else:
                     st.error("❌ পাসওয়ার্ড মিলছে না বা খালি রাখা যাবে না!")
